@@ -238,6 +238,10 @@
         <label for="canBonus">Attempt Can Bonus</label>
         <input id="canBonus" type="checkbox" />
       </div>
+      <div class="row" style="grid-template-columns: 1fr auto;">
+        <label for="canPathComplete">Can Path Completed</label>
+        <input id="canPathComplete" type="checkbox" />
+      </div>
       <div class="row">
         <label for="insideCanDistance">Inside Can Distance (cm)</label>
         <input id="insideCanDistance" type="number" min="0" max="100" step="0.1" value="50" />
@@ -255,12 +259,12 @@
         <summary>2026 EV-C Quick Rules Reference</summary>
         <ul>
           <li>Run Score = 100 + Distance Score + Time Score + Bonuses + Run Penalties (low score wins).</li>
-          <li>Distance Score = 2.0 pt/cm × Vehicle Distance (distance from MP to Target Point).</li>
+          <li>Distance Score = 2.0 pt/cm &times; Vehicle Distance (distance from Measurement Point to Target Point).</li>
           <li>Time Score = absolute value of (Target Time − Run Time).</li>
-          <li>Can Bonus = -0.5 × (110 − Inside Can Distance) when teams attempt and complete the can path.</li>
+          <li>Can Bonus = -0.5 &times; (110 − Inside Can Distance) when teams attempt and complete the can path.</li>
           <li>Run Penalties: Competition Violation = +150, Construction Violation = +300.</li>
           <li>Bonus Line is halfway between Start and Target. Two upright cans are placed on the Bonus Line.</li>
-          <li>Outside can is fixed by ES; inside can is competitor-set between 0.0 and 100.0 cm from the outside can’s inside edge.</li>
+          <li>Outside can is fixed by the Event Supervisor; inside can is competitor set between 0.0 and 100.0 cm from the outside can’s inside edge.</li>
           <li>Can Bonus requires the full vehicle to travel between cans during the run.</li>
         </ul>
       </details>
@@ -307,6 +311,9 @@
     const M_TO_PX = 70;
     const VEL_SMOOTHING = 5;
     const OMEGA_SMOOTHING = 8;
+    const DISTANCE_POINTS_PER_CM = 2.0;
+    const CAN_BONUS_REFERENCE_CM = 110;
+    const CAN_BONUS_SCALE = -0.5;
     const wrapAngle = (a) => {
       while (a > Math.PI) a -= Math.PI * 2;
       while (a < -Math.PI) a += Math.PI * 2;
@@ -358,12 +365,14 @@
         kiyaw: parseFloat(E("kiyaw").value),
         kdyaw: parseFloat(E("kdyaw").value),
         canBonus: E("canBonus").checked,
+        canPathComplete: E("canPathComplete").checked,
         insideCanDistance: parseFloat(E("insideCanDistance").value),
         competitionViolation: E("competitionViolation").checked,
         constructionViolation: E("constructionViolation").checked,
       };
       params.targetDistance = Math.max(0.5, params.targetDistance);
       params.targetTime = Math.max(1, params.targetTime);
+      if (!Number.isFinite(params.insideCanDistance)) params.insideCanDistance = 50;
       params.insideCanDistance = clamp(params.insideCanDistance, 0, 100);
       return params;
     }
@@ -443,9 +452,9 @@
       const finalYawErrorDeg = Math.abs((state.yaw * 180) / Math.PI);
       const timeError = Math.abs(state.t - p.targetTime);
 
-      const distanceScore = 2.0 * vehicleDistanceCm;
+      const distanceScore = DISTANCE_POINTS_PER_CM * vehicleDistanceCm;
       const timeScore = timeError;
-      const canBonus = p.canBonus ? -0.5 * (110 - p.insideCanDistance) : 0;
+      const canBonus = Math.min(0, p.canBonus && p.canPathComplete ? CAN_BONUS_SCALE * (CAN_BONUS_REFERENCE_CM - p.insideCanDistance) : 0);
       const penalties = (p.competitionViolation ? 150 : 0) + (p.constructionViolation ? 300 : 0);
       const base = 100;
       const run = base + distanceScore + timeScore + canBonus + penalties;
