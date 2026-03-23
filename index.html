@@ -258,6 +258,11 @@
     const E = (id) => document.getElementById(id);
     const fmt = (n, d = 2) => Number(n).toFixed(d);
     const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    const EPSILON = 1e-4;
+    const WHEEL_BASE_M = 0.26;
+    const M_TO_PX = 70;
+    const VEL_SMOOTHING = 5;
+    const OMEGA_SMOOTHING = 8;
     const wrapAngle = (a) => {
       while (a > Math.PI) a -= Math.PI * 2;
       while (a < -Math.PI) a += Math.PI * 2;
@@ -269,7 +274,6 @@
       running: false,
       t: 0,
       dt: 1 / 60,
-      wheelBase: 0.26,
       x: 0,
       y: 0,
       yaw: 0,
@@ -350,7 +354,7 @@
     function profileSpeed(progress, p, profile) {
       const s = clamp(progress, 0, p.targetDistance);
       if (s < profile.accelDist) {
-        const a = (p.vmax * p.vmax) / Math.max(0.0001, 2 * profile.accelDist);
+        const a = (p.vmax * p.vmax) / Math.max(EPSILON, 2 * profile.accelDist);
         return Math.sqrt(Math.max(0, 2 * a * s));
       }
 
@@ -359,7 +363,7 @@
 
       if (s < p.targetDistance) {
         const d = s - coastEnd;
-        const a = (p.vstop * p.vstop - profile.vCruise * profile.vCruise) / Math.max(0.0001, 2 * profile.decelDist);
+        const a = (p.vstop * p.vstop - profile.vCruise * profile.vCruise) / Math.max(EPSILON, 2 * profile.decelDist);
         return Math.sqrt(Math.max(p.vstop * p.vstop, profile.vCruise * profile.vCruise + 2 * a * d));
       }
       return 0;
@@ -434,7 +438,6 @@
     function drawField(p) {
       const w = canvas.width;
       const h = canvas.height;
-      const mToPx = 70;
       const cx = 80;
       const cy = h * 0.65;
 
@@ -459,36 +462,36 @@
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + p.targetDistance * mToPx, cy);
+      ctx.lineTo(cx + p.targetDistance * M_TO_PX, cy);
       ctx.stroke();
 
       ctx.strokeStyle = "#19477d";
       ctx.setLineDash([6, 6]);
       ctx.beginPath();
-      ctx.moveTo(cx + state.x * mToPx, cy - 80);
-      ctx.lineTo(cx + state.x * mToPx, cy + 80);
+      ctx.moveTo(cx + state.x * M_TO_PX, cy - 80);
+      ctx.lineTo(cx + state.x * M_TO_PX, cy + 80);
       ctx.stroke();
       ctx.setLineDash([]);
 
       ctx.fillStyle = "#adff1f";
       ctx.fillText("START", cx - 18, cy - 18);
       ctx.fillStyle = "#ff3c42";
-      ctx.fillText("TARGET", cx + p.targetDistance * mToPx - 18, cy - 18);
+      ctx.fillText("TARGET", cx + p.targetDistance * M_TO_PX - 18, cy - 18);
 
       ctx.strokeStyle = "#95ff1a";
       ctx.lineWidth = 1;
       ctx.beginPath();
       for (let i = 0; i < state.path.length; i++) {
         const pt = state.path[i];
-        const x = cx + pt.x * mToPx;
-        const y = cy - pt.y * mToPx;
+        const x = cx + pt.x * M_TO_PX;
+        const y = cy - pt.y * M_TO_PX;
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
       ctx.stroke();
 
-      const rx = cx + state.x * mToPx;
-      const ry = cy - state.y * mToPx;
+      const rx = cx + state.x * M_TO_PX;
+      const ry = cy - state.y * M_TO_PX;
       ctx.save();
       ctx.translate(rx, ry);
       ctx.rotate(-state.yaw);
@@ -537,10 +540,10 @@
         state.rightMotor = clamp(baseCmd + turnCmd, -p.vmax, p.vmax);
 
         const vCmd = (state.leftMotor + state.rightMotor) * 0.5;
-        const omegaCmd = (state.rightMotor - state.leftMotor) / state.wheelBase;
+        const omegaCmd = (state.rightMotor - state.leftMotor) / WHEEL_BASE_M;
 
-        state.v += (vCmd - state.v) * 5 * state.dt;
-        state.omega += (omegaCmd - state.omega) * 8 * state.dt;
+        state.v += (vCmd - state.v) * VEL_SMOOTHING * state.dt;
+        state.omega += (omegaCmd - state.omega) * OMEGA_SMOOTHING * state.dt;
 
         state.yaw = wrapAngle(state.yaw + state.omega * state.dt);
         state.x += state.v * Math.cos(state.yaw) * state.dt;
