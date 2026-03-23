@@ -149,6 +149,25 @@
       background: #7e8aa6;
     }
     .status-dot.ready { background: var(--accent); }
+    details.rules {
+      margin-top: 10px;
+      background: #0d1728;
+      border: 1px solid #223553;
+      border-radius: 6px;
+      padding: 8px;
+    }
+    details.rules summary {
+      cursor: pointer;
+      color: #a8c5ff;
+      margin-bottom: 6px;
+    }
+    details.rules ul {
+      margin: 0 0 0 16px;
+      padding: 0;
+      color: #95a9d4;
+      font-size: 12px;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
@@ -219,7 +238,36 @@
         <label for="canBonus">Attempt Can Bonus</label>
         <input id="canBonus" type="checkbox" />
       </div>
+      <div class="row" style="grid-template-columns: 1fr auto;">
+        <label for="canPathComplete">Can Path Completed</label>
+        <input id="canPathComplete" type="checkbox" />
+      </div>
+      <div class="row">
+        <label for="insideCanDistance">Inside Can Distance (cm)</label>
+        <input id="insideCanDistance" type="number" min="0" max="100" step="0.1" value="50" />
+      </div>
+      <div class="row" style="grid-template-columns: 1fr auto;">
+        <label for="competitionViolation">Competition Violation (+150)</label>
+        <input id="competitionViolation" type="checkbox" />
+      </div>
+      <div class="row" style="grid-template-columns: 1fr auto;">
+        <label for="constructionViolation">Construction Violation (+300)</label>
+        <input id="constructionViolation" type="checkbox" />
+      </div>
       <button id="runBtn">Run Simulation</button>
+      <details class="rules">
+        <summary>2026 EV-C Quick Rules Reference</summary>
+        <ul>
+          <li>Run Score = 100 + Distance Score + Time Score + Bonuses + Run Penalties (low score wins).</li>
+          <li>Distance Score = 2.0 pt/cm &times; Vehicle Distance (distance from Measurement Point to Target Point).</li>
+          <li>Time Score = absolute value of (Target Time − Run Time).</li>
+          <li>Can Bonus = -0.5 &times; (110 − Inside Can Distance) when teams attempt and complete the can path.</li>
+          <li>Run Penalties: Competition Violation = +150, Construction Violation = +300.</li>
+          <li>Bonus Line is halfway between Start and Target. Two upright cans are placed on the Bonus Line.</li>
+          <li>Outside can is fixed by the Event Supervisor; inside can is competitor set between 0.0 and 100.0 cm from the outside can’s inside edge.</li>
+          <li>Can Bonus requires the full vehicle to travel between cans during the run.</li>
+        </ul>
+      </details>
     </aside>
 
     <main class="main">
@@ -263,6 +311,9 @@
     const M_TO_PX = 70;
     const VEL_SMOOTHING = 5;
     const OMEGA_SMOOTHING = 8;
+    const DISTANCE_POINTS_PER_CM = 2.0;
+    const CAN_BONUS_REFERENCE_CM = 110;
+    const CAN_BONUS_SCALE = -0.5;
     const wrapAngle = (a) => {
       while (a > Math.PI) a -= Math.PI * 2;
       while (a < -Math.PI) a += Math.PI * 2;
@@ -314,9 +365,15 @@
         kiyaw: parseFloat(E("kiyaw").value),
         kdyaw: parseFloat(E("kdyaw").value),
         canBonus: E("canBonus").checked,
+        canPathComplete: E("canPathComplete").checked,
+        insideCanDistance: parseFloat(E("insideCanDistance").value),
+        competitionViolation: E("competitionViolation").checked,
+        constructionViolation: E("constructionViolation").checked,
       };
       params.targetDistance = Math.max(0.5, params.targetDistance);
       params.targetTime = Math.max(1, params.targetTime);
+      if (!Number.isFinite(params.insideCanDistance)) params.insideCanDistance = 50;
+      params.insideCanDistance = clamp(params.insideCanDistance, 0, 100);
       return params;
     }
 
@@ -391,24 +448,27 @@
 
     function scoreRun(p) {
       const finalDistanceError = Math.abs(p.targetDistance - state.x);
+      const vehicleDistanceCm = finalDistanceError * 100;
       const finalYawErrorDeg = Math.abs((state.yaw * 180) / Math.PI);
       const timeError = Math.abs(state.t - p.targetTime);
 
-      const distanceScore = Math.max(0, 40 - finalDistanceError * 50);
-      const timeScore = Math.max(0, 25 - timeError * 10);
-      const penalties = Math.max(0, Math.abs(state.y) * 15 + Math.max(0, finalYawErrorDeg - 6));
-      const canBonus = p.canBonus && finalDistanceError < 0.1 && Math.abs(state.y) < 0.06 && finalYawErrorDeg < 4 ? 15 : 0;
+      const distanceScore = DISTANCE_POINTS_PER_CM * vehicleDistanceCm;
+      const timeScore = timeError;
+      const canBonus = Math.min(0, p.canBonus && p.canPathComplete ? CAN_BONUS_SCALE * (CAN_BONUS_REFERENCE_CM - p.insideCanDistance) : 0);
+      const penalties = (p.competitionViolation ? 150 : 0) + (p.constructionViolation ? 300 : 0);
       const base = 100;
-      const run = Math.max(0, base + distanceScore + timeScore + canBonus - penalties);
+      const run = base + distanceScore + timeScore + canBonus + penalties;
 
-      state.score = { base, distanceScore, timeScore, canBonus, penalties, run };
+      state.score = { base, vehicleDistanceCm, finalYawErrorDeg, distanceScore, timeScore, canBonus, penalties, run };
       E("scoreCard").innerHTML =
         `Base <span style="float:right">${fmt(base)}</span><br>` +
+        `Vehicle Distance (cm) <span style="float:right">${fmt(vehicleDistanceCm, 1)}</span><br>` +
+        `Final Yaw Error (°) <span style="float:right">${fmt(finalYawErrorDeg, 2)}</span><br>` +
         `Distance <span style="float:right">${fmt(distanceScore)}</span><br>` +
         `Time <span style="float:right">${fmt(timeScore)}</span><br>` +
         `Can Bonus <span style="float:right">${fmt(canBonus)}</span><br>` +
-        `Penalties <span style="float:right">${fmt(penalties)}</span><br><hr style="border-color:#253a59"/>` +
-        `<b>Run Score</b> <span style="float:right"><b>${fmt(run)}</b></span>`;
+        `Run Penalties <span style="float:right">${fmt(penalties)}</span><br><hr style="border-color:#253a59"/>` +
+        `<b>Run Score (low wins)</b> <span style="float:right"><b>${fmt(run)}</b></span>`;
     }
 
     function updateTelemetry(fwdErr, yawErr) {
@@ -591,7 +651,7 @@
     E("runBtn").addEventListener("click", () => {
       resetRun();
       state.running = true;
-      logLine("Differential drive run started with trapezoid profile + PID using T265 x/y/yaw.");
+      logLine("Differential drive run started with trapezoid profile + PID using T265 x/y/yaw and 2026 EV-C style scoring.");
     });
 
     resetRun();
