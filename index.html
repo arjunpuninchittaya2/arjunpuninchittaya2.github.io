@@ -23,18 +23,27 @@
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       background: var(--bg);
       color: var(--txt);
+      height: 100vh;
+      overflow: hidden;
     }
 
     .layout {
       display: grid;
       grid-template-columns: 300px minmax(600px, 1fr) 300px;
-      min-height: 100vh;
+      height: 100vh;
+      overflow: hidden;
     }
 
     .panel {
       padding: 14px;
       border-right: 1px solid var(--line);
       background: linear-gradient(180deg, #0d1424, #0a101d);
+      overflow: hidden;
+    }
+
+    .layout > .panel:not(.right) {
+      overflow-y: auto;
+      overflow-x: hidden;
     }
 
     .panel.right {
@@ -105,7 +114,7 @@
       color: #9ab0d4;
       font-size: 13px;
       white-space: nowrap;
-      overflow-x: auto;
+      overflow: hidden;
     }
 
     canvas {
@@ -133,7 +142,7 @@
       border: 1px solid #20324f;
       min-height: 120px;
       max-height: 180px;
-      overflow: auto;
+      overflow: hidden;
       border-radius: 6px;
       padding: 8px;
       font-size: 12px;
@@ -185,25 +194,25 @@
         <input id="targetTime" type="number" min="1" step="0.1" value="14" />
       </div>
 
-      <h2>Trapezoid Profile</h2>
-      <div class="small">Robot bursts to Vmax, cruises at computed speed to match target time, and decelerates into cans with a flat approach.</div>
+      <h2>Pure Pursuit Path</h2>
+      <div class="small">Path is always can-shaped: start to can gap and back to target. Pure pursuit tracks a trapezoid-like route.</div>
       <div class="slider-block">
         <div class="meta"><span>Vmax (m/s)</span><span id="vmaxV" class="mono"></span></div>
         <input id="vmax" type="range" min="0.3" max="2.5" step="0.01" value="1.2" />
       </div>
       <div class="slider-block">
-        <div class="meta"><span>Accel distance (m)</span><span id="accelDistV" class="mono"></span></div>
-        <input id="accelDist" type="range" min="0.1" max="3" step="0.01" value="0.6" />
+        <div class="meta"><span>Lookahead (m)</span><span id="lookaheadV" class="mono"></span></div>
+        <input id="lookahead" type="range" min="0.2" max="2.5" step="0.01" value="0.9" />
       </div>
       <div class="slider-block">
-        <div class="meta"><span>Decel distance (m)</span><span id="decelDistV" class="mono"></span></div>
-        <input id="decelDist" type="range" min="0.1" max="4" step="0.01" value="1.5" />
+        <div class="meta"><span>Middle Y (m)</span><span id="midYV" class="mono"></span></div>
+        <input id="midY" type="range" min="0.2" max="2.0" step="0.01" value="1.0" />
       </div>
       <div class="slider-block">
         <div class="meta"><span>Vstop (m/s)</span><span id="vstopV" class="mono"></span></div>
         <input id="vstop" type="range" min="0" max="0.5" step="0.01" value="0.06" />
       </div>
-      <div class="card small mono" id="cruiseInfo">Cruise: --</div>
+      <div class="card small mono" id="pathInfo">Path: (0,0) -> (1,1) -> (7,1) -> (8,0)</div>
 
       <h2>PID - Forward (x)</h2>
       <div class="slider-block">
@@ -234,14 +243,6 @@
       </div>
 
       <h2>Run</h2>
-      <div class="row" style="grid-template-columns: 1fr auto;">
-        <label for="canBonus">Attempt Can Bonus</label>
-        <input id="canBonus" type="checkbox" />
-      </div>
-      <div class="row" style="grid-template-columns: 1fr auto;">
-        <label for="canPathComplete">Can Path Completed</label>
-        <input id="canPathComplete" type="checkbox" />
-      </div>
       <div class="row">
         <label for="insideCanDistance">Inside Can Distance (cm)</label>
         <input id="insideCanDistance" type="number" min="0" max="100" step="0.1" value="50" />
@@ -302,363 +303,6 @@
     </aside>
   </div>
 
-  <script>
-    const E = (id) => document.getElementById(id);
-    const fmt = (n, d = 2) => Number(n).toFixed(d);
-    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-    const EPSILON = 1e-4;
-    const WHEEL_BASE_M = 0.26;
-    const M_TO_PX = 70;
-    const VEL_SMOOTHING = 5;
-    const OMEGA_SMOOTHING = 8;
-    const DISTANCE_POINTS_PER_CM = 2.0;
-    const CAN_BONUS_REFERENCE_CM = 110;
-    const CAN_BONUS_SCALE = -0.5;
-    const wrapAngle = (a) => {
-      while (a > Math.PI) a -= Math.PI * 2;
-      while (a < -Math.PI) a += Math.PI * 2;
-      return a;
-    };
-
-    const sliders = ["vmax", "accelDist", "decelDist", "vstop", "kp", "ki", "kd", "kpyaw", "kiyaw", "kdyaw"];
-    const state = {
-      running: false,
-      t: 0,
-      dt: 1 / 60,
-      x: 0,
-      y: 0,
-      yaw: 0,
-      v: 0,
-      omega: 0,
-      leftMotor: 0,
-      rightMotor: 0,
-      progress: 0,
-      desiredProgress: 0,
-      profile: null,
-      pid: {
-        fwdI: 0,
-        yawI: 0,
-        prevFwdE: 0,
-        prevYawE: 0,
-      },
-      path: [],
-      score: null,
-    };
-
-    function logLine(txt) {
-      const at = new Date().toLocaleTimeString();
-      E("log").innerHTML = `[${at}] ${txt}<br>` + E("log").innerHTML;
-    }
-
-    function readParams() {
-      const params = {
-        targetDistance: parseFloat(E("targetDistance").value),
-        targetTime: parseFloat(E("targetTime").value),
-        vmax: parseFloat(E("vmax").value),
-        accelDist: parseFloat(E("accelDist").value),
-        decelDist: parseFloat(E("decelDist").value),
-        vstop: parseFloat(E("vstop").value),
-        kp: parseFloat(E("kp").value),
-        ki: parseFloat(E("ki").value),
-        kd: parseFloat(E("kd").value),
-        kpyaw: parseFloat(E("kpyaw").value),
-        kiyaw: parseFloat(E("kiyaw").value),
-        kdyaw: parseFloat(E("kdyaw").value),
-        canBonus: E("canBonus").checked,
-        canPathComplete: E("canPathComplete").checked,
-        insideCanDistance: parseFloat(E("insideCanDistance").value),
-        competitionViolation: E("competitionViolation").checked,
-        constructionViolation: E("constructionViolation").checked,
-      };
-      params.targetDistance = Math.max(0.5, params.targetDistance);
-      params.targetTime = Math.max(1, params.targetTime);
-      if (!Number.isFinite(params.insideCanDistance)) params.insideCanDistance = 50;
-      params.insideCanDistance = clamp(params.insideCanDistance, 0, 100);
-      return params;
-    }
-
-    function solveCruiseSpeed(p) {
-      const accelDist = Math.min(p.accelDist, p.targetDistance * 0.45);
-      const decelDist = Math.min(p.decelDist, p.targetDistance - accelDist);
-      const cruiseDist = Math.max(0, p.targetDistance - accelDist - decelDist);
-      const tAccel = p.vmax > 0.01 ? (2 * accelDist) / p.vmax : 0;
-
-      const tFor = (vc) => {
-        const tCruise = vc > 0.001 ? cruiseDist / vc : 1e9;
-        const denom = Math.max(0.01, vc + p.vstop);
-        const tDecel = (2 * decelDist) / denom;
-        return tAccel + tCruise + tDecel;
-      };
-
-      let lo = Math.max(p.vstop + 0.01, 0.03);
-      let hi = Math.max(lo + 0.01, p.vmax);
-      for (let i = 0; i < 50; i++) {
-        const mid = (lo + hi) * 0.5;
-        if (tFor(mid) > p.targetTime) lo = mid;
-        else hi = mid;
-      }
-      const vc = clamp((lo + hi) * 0.5, p.vstop + 0.01, p.vmax);
-
-      return {
-        accelDist,
-        decelDist,
-        cruiseDist,
-        vCruise: vc,
-        tEstimate: tFor(vc),
-      };
-    }
-
-    function profileSpeed(progress, p, profile) {
-      const s = clamp(progress, 0, p.targetDistance);
-      if (s < profile.accelDist) {
-        const a = (p.vmax * p.vmax) / Math.max(EPSILON, 2 * profile.accelDist);
-        return Math.sqrt(Math.max(0, 2 * a * s));
-      }
-
-      const coastEnd = profile.accelDist + profile.cruiseDist;
-      if (s < coastEnd) return profile.vCruise;
-
-      if (s < p.targetDistance) {
-        const d = s - coastEnd;
-        const a = (p.vstop * p.vstop - profile.vCruise * profile.vCruise) / Math.max(EPSILON, 2 * profile.decelDist);
-        return Math.sqrt(Math.max(p.vstop * p.vstop, profile.vCruise * profile.vCruise + 2 * a * d));
-      }
-      return 0;
-    }
-
-    function resetRun() {
-      state.running = false;
-      state.t = 0;
-      state.x = 0;
-      state.y = 0;
-      state.yaw = 0;
-      state.v = 0;
-      state.omega = 0;
-      state.leftMotor = 0;
-      state.rightMotor = 0;
-      state.progress = 0;
-      state.desiredProgress = 0;
-      state.pid.fwdI = 0;
-      state.pid.yawI = 0;
-      state.pid.prevFwdE = 0;
-      state.pid.prevYawE = 0;
-      state.path = [{ x: 0, y: 0 }];
-      state.score = null;
-    }
-
-    function scoreRun(p) {
-      const finalDistanceError = Math.abs(p.targetDistance - state.x);
-      const vehicleDistanceCm = finalDistanceError * 100;
-      const finalYawErrorDeg = Math.abs((state.yaw * 180) / Math.PI);
-      const timeError = Math.abs(state.t - p.targetTime);
-
-      const distanceScore = DISTANCE_POINTS_PER_CM * vehicleDistanceCm;
-      const timeScore = timeError;
-      const canBonus = Math.min(0, p.canBonus && p.canPathComplete ? CAN_BONUS_SCALE * (CAN_BONUS_REFERENCE_CM - p.insideCanDistance) : 0);
-      const penalties = (p.competitionViolation ? 150 : 0) + (p.constructionViolation ? 300 : 0);
-      const base = 100;
-      const run = base + distanceScore + timeScore + canBonus + penalties;
-
-      state.score = { base, vehicleDistanceCm, finalYawErrorDeg, distanceScore, timeScore, canBonus, penalties, run };
-      E("scoreCard").innerHTML =
-        `Base <span style="float:right">${fmt(base)}</span><br>` +
-        `Vehicle Distance (cm) <span style="float:right">${fmt(vehicleDistanceCm, 1)}</span><br>` +
-        `Final Yaw Error (°) <span style="float:right">${fmt(finalYawErrorDeg, 2)}</span><br>` +
-        `Distance <span style="float:right">${fmt(distanceScore)}</span><br>` +
-        `Time <span style="float:right">${fmt(timeScore)}</span><br>` +
-        `Can Bonus <span style="float:right">${fmt(canBonus)}</span><br>` +
-        `Run Penalties <span style="float:right">${fmt(penalties)}</span><br><hr style="border-color:#253a59"/>` +
-        `<b>Run Score (low wins)</b> <span style="float:right"><b>${fmt(run)}</b></span>`;
-    }
-
-    function updateTelemetry(fwdErr, yawErr) {
-      E("xVal").textContent = fmt(state.x, 3);
-      E("yVal").textContent = fmt(state.y, 3);
-      E("yawVal").textContent = fmt((state.yaw * 180) / Math.PI, 2);
-      E("speedVal").textContent = fmt(state.v, 3);
-      E("lMotorVal").textContent = fmt(state.leftMotor, 2);
-      E("rMotorVal").textContent = fmt(state.rightMotor, 2);
-      E("fwdErrVal").textContent = fmt(fwdErr, 3);
-      E("yawErrVal").textContent = fmt((yawErr * 180) / Math.PI, 2);
-      E("fwdIntVal").textContent = fmt(state.pid.fwdI, 3);
-      E("yawIntVal").textContent = fmt(state.pid.yawI, 3);
-
-      E("topbar").innerHTML =
-        `<span class="status-dot ${state.running ? "ready" : ""}"></span>${state.running ? "RUNNING" : "READY"}` +
-        ` | T: ${fmt(state.t, 2)}s` +
-        ` X: ${fmt(state.x, 3)}m` +
-        ` Y: ${fmt(state.y, 3)}m` +
-        ` ψ: ${fmt((state.yaw * 180) / Math.PI, 2)}°` +
-        ` V: ${fmt(state.v, 3)}m/s`;
-    }
-
-    const canvas = E("field");
-    const ctx = canvas.getContext("2d");
-
-    function drawField(p) {
-      const w = canvas.width;
-      const h = canvas.height;
-      const cx = 80;
-      const cy = h * 0.65;
-
-      ctx.fillStyle = "#020905";
-      ctx.fillRect(0, 0, w, h);
-
-      ctx.strokeStyle = "#0e2818";
-      for (let x = 0; x < w; x += 45) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, h);
-        ctx.stroke();
-      }
-      for (let y = 0; y < h; y += 45) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(w, y);
-        ctx.stroke();
-      }
-
-      ctx.strokeStyle = "#1d5a22";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + p.targetDistance * M_TO_PX, cy);
-      ctx.stroke();
-
-      ctx.strokeStyle = "#19477d";
-      ctx.setLineDash([6, 6]);
-      ctx.beginPath();
-      ctx.moveTo(cx + state.x * M_TO_PX, cy - 80);
-      ctx.lineTo(cx + state.x * M_TO_PX, cy + 80);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.fillStyle = "#adff1f";
-      ctx.fillText("START", cx - 18, cy - 18);
-      ctx.fillStyle = "#ff3c42";
-      ctx.fillText("TARGET", cx + p.targetDistance * M_TO_PX - 18, cy - 18);
-
-      ctx.strokeStyle = "#95ff1a";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let i = 0; i < state.path.length; i++) {
-        const pt = state.path[i];
-        const x = cx + pt.x * M_TO_PX;
-        const y = cy - pt.y * M_TO_PX;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-
-      const rx = cx + state.x * M_TO_PX;
-      const ry = cy - state.y * M_TO_PX;
-      ctx.save();
-      ctx.translate(rx, ry);
-      ctx.rotate(-state.yaw);
-      ctx.fillStyle = "#10d9ff";
-      ctx.strokeStyle = "#0aa6c7";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(-10, -7, 20, 14, 3);
-      ctx.fill();
-      ctx.stroke();
-      ctx.strokeStyle = "#f6ff3a";
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(14, 0);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    function step() {
-      const p = readParams();
-      const profile = solveCruiseSpeed(p);
-      state.profile = profile;
-      E("cruiseInfo").textContent = `Cruise: ${fmt(profile.vCruise, 3)} m/s — est. time ${fmt(profile.tEstimate, 2)}s (target ${fmt(p.targetTime, 2)}s)`;
-
-      if (state.running) {
-        const vSet = profileSpeed(state.desiredProgress, p, profile);
-        state.desiredProgress = clamp(state.desiredProgress + Math.max(vSet, 0.02) * state.dt, 0, p.targetDistance);
-        const fwdErr = state.desiredProgress - state.x;
-        const desiredYaw = Math.atan2(-state.y, Math.max(0.2, p.targetDistance - state.x));
-        const yawErr = wrapAngle(desiredYaw - state.yaw);
-
-        state.pid.fwdI = clamp(state.pid.fwdI + fwdErr * state.dt, -1.2, 1.2);
-        state.pid.yawI = clamp(state.pid.yawI + yawErr * state.dt, -2, 2);
-
-        const fwdD = (fwdErr - state.pid.prevFwdE) / state.dt;
-        const yawD = (yawErr - state.pid.prevYawE) / state.dt;
-        state.pid.prevFwdE = fwdErr;
-        state.pid.prevYawE = yawErr;
-
-        const pidFwd = p.kp * fwdErr + p.ki * state.pid.fwdI + p.kd * fwdD;
-        const pidYaw = p.kpyaw * yawErr + p.kiyaw * state.pid.yawI + p.kdyaw * yawD;
-
-        const baseCmd = clamp(vSet + pidFwd, -p.vmax, p.vmax);
-        const turnCmd = clamp(pidYaw, -p.vmax * 0.9, p.vmax * 0.9);
-        state.leftMotor = clamp(baseCmd - turnCmd, -p.vmax, p.vmax);
-        state.rightMotor = clamp(baseCmd + turnCmd, -p.vmax, p.vmax);
-
-        const vCmd = (state.leftMotor + state.rightMotor) * 0.5;
-        const omegaCmd = (state.rightMotor - state.leftMotor) / WHEEL_BASE_M;
-
-        state.v += (vCmd - state.v) * VEL_SMOOTHING * state.dt;
-        state.omega += (omegaCmd - state.omega) * OMEGA_SMOOTHING * state.dt;
-
-        state.yaw = wrapAngle(state.yaw + state.omega * state.dt);
-        state.x += state.v * Math.cos(state.yaw) * state.dt;
-        state.y += state.v * Math.sin(state.yaw) * state.dt;
-        state.progress = clamp(state.x, 0, p.targetDistance);
-        state.t += state.dt;
-
-        if (state.path.length === 0 || Math.hypot(state.x - state.path[state.path.length - 1].x, state.y - state.path[state.path.length - 1].y) > 0.02) {
-          state.path.push({ x: state.x, y: state.y });
-        }
-
-        const doneByDistance = state.x >= p.targetDistance;
-        const timeout = state.t >= p.targetTime + 5;
-        if (doneByDistance || timeout) {
-          state.running = false;
-          state.leftMotor = 0;
-          state.rightMotor = 0;
-          scoreRun(p);
-          logLine(`Run complete: x=${fmt(state.x, 3)}m y=${fmt(state.y, 3)}m yaw=${fmt((state.yaw * 180) / Math.PI, 2)}° t=${fmt(state.t, 2)}s`);
-        }
-
-        updateTelemetry(fwdErr, yawErr);
-      } else {
-        updateTelemetry(p.targetDistance - state.x, -state.yaw);
-      }
-
-      drawField(p);
-      requestAnimationFrame(step);
-    }
-
-    function refreshSliderLabels() {
-      E("vmaxV").textContent = fmt(E("vmax").value, 2);
-      E("accelDistV").textContent = fmt(E("accelDist").value, 2);
-      E("decelDistV").textContent = fmt(E("decelDist").value, 2);
-      E("vstopV").textContent = fmt(E("vstop").value, 2);
-      E("kpV").textContent = fmt(E("kp").value, 2);
-      E("kiV").textContent = fmt(E("ki").value, 2);
-      E("kdV").textContent = fmt(E("kd").value, 2);
-      E("kpyawV").textContent = fmt(E("kpyaw").value, 2);
-      E("kiyawV").textContent = fmt(E("kiyaw").value, 2);
-      E("kdyawV").textContent = fmt(E("kdyaw").value, 2);
-    }
-
-    sliders.forEach((id) => E(id).addEventListener("input", refreshSliderLabels));
-    E("runBtn").addEventListener("click", () => {
-      resetRun();
-      state.running = true;
-      logLine("Differential drive run started with trapezoid profile + PID using T265 x/y/yaw and 2026 EV-C style scoring.");
-    });
-
-    resetRun();
-    refreshSliderLabels();
-    E("scoreCard").innerHTML = "Base <span style=\"float:right\">100.00</span><br>Run score appears after simulation.";
-    logLine("Configure profile and PID gains, then press Run Simulation.");
-    requestAnimationFrame(step);
-  </script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>

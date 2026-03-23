@@ -1,0 +1,9 @@
+export const WHEEL_BASE_M = 0.26;
+export const M_TO_PX = 70;
+export const VEL_SMOOTHING = 5;
+export const OMEGA_SMOOTHING = 8;
+export const DISTANCE_POINTS_PER_CM = 2.0;
+export const CAN_BONUS_REFERENCE_CM = 110;
+export const CAN_BONUS_SCALE = -0.5;
+export const STOP_ZONE_M = 1.2;
+export const DECELERATION_MPS2 = 0.9;
