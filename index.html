@@ -1,1 +1,601 @@
-Hi!
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EV-C Differential Drive Simulator</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --panel: #10182a;
+      --grid: #153022;
+      --line: #1f2d45;
+      --txt: #d6e2ff;
+      --muted: #7a89a8;
+      --accent: #b9ff13;
+      --cyan: #10d9ff;
+      --warn: #ff6b2f;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: var(--bg);
+      color: var(--txt);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 300px minmax(600px, 1fr) 300px;
+      min-height: 100vh;
+    }
+
+    .panel {
+      padding: 14px;
+      border-right: 1px solid var(--line);
+      background: linear-gradient(180deg, #0d1424, #0a101d);
+    }
+
+    .panel.right {
+      border-right: 0;
+      border-left: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0 0 14px;
+      color: var(--accent);
+      font-size: 32px;
+      letter-spacing: 1px;
+    }
+
+    h2 {
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 2px;
+      margin: 14px 0 8px;
+      text-transform: uppercase;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+
+    .row { display: grid; grid-template-columns: 1fr 110px; gap: 10px; align-items: center; margin-bottom: 8px; }
+    label { font-size: 13px; color: #9aaaca; }
+
+    input[type="number"] {
+      width: 100%;
+      background: #111b2e;
+      border: 1px solid #263958;
+      border-radius: 5px;
+      color: #e3f1ff;
+      padding: 7px;
+      font: inherit;
+    }
+
+    .slider-block { margin-bottom: 10px; }
+    .slider-block .meta {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #8fa1c6;
+      margin-bottom: 4px;
+    }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+    button {
+      width: 100%;
+      border: 1px solid #2a4a2d;
+      background: #122117;
+      color: var(--accent);
+      padding: 8px;
+      border-radius: 6px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .main {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-width: 0;
+    }
+
+    .topbar {
+      border-bottom: 1px solid var(--line);
+      padding: 8px 12px;
+      color: #9ab0d4;
+      font-size: 13px;
+      white-space: nowrap;
+      overflow-x: auto;
+    }
+
+    canvas {
+      width: 100%;
+      height: calc(100vh - 50px);
+      display: block;
+      background: #030a06;
+    }
+
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .card {
+      background: #111a2c;
+      border: 1px solid #223553;
+      border-radius: 6px;
+      padding: 8px;
+    }
+    .card .k { color: #7e95bc; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+    .card .v { font-size: 28px; color: var(--accent); }
+
+    .small { font-size: 12px; color: #8ea0c4; }
+    .mono { font-variant-numeric: tabular-nums; }
+
+    .log {
+      background: #091320;
+      border: 1px solid #20324f;
+      min-height: 120px;
+      max-height: 180px;
+      overflow: auto;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 12px;
+      color: var(--cyan);
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 4px;
+      background: #7e8aa6;
+    }
+    .status-dot.ready { background: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="panel">
+      <h1>EV-C SIM</h1>
+
+      <h2>Competition Setup</h2>
+      <div class="row">
+        <label for="targetDistance">Target Distance (m)</label>
+        <input id="targetDistance" type="number" min="0.5" step="0.1" value="8" />
+      </div>
+      <div class="row">
+        <label for="targetTime">Target Time (s)</label>
+        <input id="targetTime" type="number" min="1" step="0.1" value="14" />
+      </div>
+
+      <h2>Trapezoid Profile</h2>
+      <div class="small">Robot bursts to Vmax, cruises at computed speed to match target time, and decelerates into cans with a flat approach.</div>
+      <div class="slider-block">
+        <div class="meta"><span>Vmax (m/s)</span><span id="vmaxV" class="mono"></span></div>
+        <input id="vmax" type="range" min="0.3" max="2.5" step="0.01" value="1.2" />
+      </div>
+      <div class="slider-block">
+        <div class="meta"><span>Accel distance (m)</span><span id="accelDistV" class="mono"></span></div>
+        <input id="accelDist" type="range" min="0.1" max="3" step="0.01" value="0.6" />
+      </div>
+      <div class="slider-block">
+        <div class="meta"><span>Decel distance (m)</span><span id="decelDistV" class="mono"></span></div>
+        <input id="decelDist" type="range" min="0.1" max="4" step="0.01" value="1.5" />
+      </div>
+      <div class="slider-block">
+        <div class="meta"><span>Vstop (m/s)</span><span id="vstopV" class="mono"></span></div>
+        <input id="vstop" type="range" min="0" max="0.5" step="0.01" value="0.06" />
+      </div>
+      <div class="card small mono" id="cruiseInfo">Cruise: --</div>
+
+      <h2>PID - Forward (x)</h2>
+      <div class="slider-block">
+        <div class="meta"><span>Kp</span><span id="kpV" class="mono"></span></div>
+        <input id="kp" type="range" min="0" max="10" step="0.05" value="3" />
+      </div>
+      <div class="slider-block">
+        <div class="meta"><span>Ki</span><span id="kiV" class="mono"></span></div>
+        <input id="ki" type="range" min="0" max="1" step="0.01" value="0.05" />
+      </div>
+      <div class="slider-block">
+        <div class="meta"><span>Kd</span><span id="kdV" class="mono"></span></div>
+        <input id="kd" type="range" min="0" max="2" step="0.01" value="0.2" />
+      </div>
+
+      <h2>PID - Heading (yaw)</h2>
+      <div class="slider-block">
+        <div class="meta"><span>Kp_yaw</span><span id="kpyawV" class="mono"></span></div>
+        <input id="kpyaw" type="range" min="0" max="8" step="0.05" value="4" />
+      </div>
+      <div class="slider-block">
+        <div class="meta"><span>Ki_yaw</span><span id="kiyawV" class="mono"></span></div>
+        <input id="kiyaw" type="range" min="0" max="1" step="0.01" value="0.01" />
+      </div>
+      <div class="slider-block">
+        <div class="meta"><span>Kd_yaw</span><span id="kdyawV" class="mono"></span></div>
+        <input id="kdyaw" type="range" min="0" max="2" step="0.01" value="0.15" />
+      </div>
+
+      <h2>Run</h2>
+      <div class="row" style="grid-template-columns: 1fr auto;">
+        <label for="canBonus">Attempt Can Bonus</label>
+        <input id="canBonus" type="checkbox" />
+      </div>
+      <button id="runBtn">Run Simulation</button>
+    </aside>
+
+    <main class="main">
+      <div class="topbar mono" id="topbar"></div>
+      <canvas id="field" width="900" height="800"></canvas>
+    </main>
+
+    <aside class="panel right">
+      <h2 style="margin-top:0;padding-top:0;border-top:0;">T265 Telemetry</h2>
+      <div class="grid2 mono">
+        <div class="card"><div class="k">x (m)</div><div class="v" id="xVal">0.000</div></div>
+        <div class="card"><div class="k">y (m)</div><div class="v" id="yVal" style="color:var(--cyan)">0.000</div></div>
+        <div class="card"><div class="k">yaw (°)</div><div class="v" id="yawVal" style="color:var(--cyan)">0.00</div></div>
+        <div class="card"><div class="k">speed (m/s)</div><div class="v" id="speedVal">0.000</div></div>
+        <div class="card"><div class="k">L motor</div><div class="v" id="lMotorVal" style="color:var(--warn)">0.00</div></div>
+        <div class="card"><div class="k">R motor</div><div class="v" id="rMotorVal" style="color:var(--warn)">0.00</div></div>
+      </div>
+
+      <h2>PID State</h2>
+      <div class="grid2 mono">
+        <div class="card"><div class="k">fwd error</div><div class="v" id="fwdErrVal">-</div></div>
+        <div class="card"><div class="k">yaw error</div><div class="v" id="yawErrVal">-</div></div>
+        <div class="card"><div class="k">fwd integral</div><div class="v" id="fwdIntVal">-</div></div>
+        <div class="card"><div class="k">yaw integral</div><div class="v" id="yawIntVal">-</div></div>
+      </div>
+
+      <h2>Scoring</h2>
+      <div class="card mono small" id="scoreCard"></div>
+
+      <h2>Event Log</h2>
+      <div class="log mono" id="log"></div>
+    </aside>
+  </div>
+
+  <script>
+    const E = (id) => document.getElementById(id);
+    const fmt = (n, d = 2) => Number(n).toFixed(d);
+    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    const wrapAngle = (a) => {
+      while (a > Math.PI) a -= Math.PI * 2;
+      while (a < -Math.PI) a += Math.PI * 2;
+      return a;
+    };
+
+    const sliders = ["vmax", "accelDist", "decelDist", "vstop", "kp", "ki", "kd", "kpyaw", "kiyaw", "kdyaw"];
+    const state = {
+      running: false,
+      t: 0,
+      dt: 1 / 60,
+      wheelBase: 0.26,
+      x: 0,
+      y: 0,
+      yaw: 0,
+      v: 0,
+      omega: 0,
+      leftMotor: 0,
+      rightMotor: 0,
+      progress: 0,
+      desiredProgress: 0,
+      profile: null,
+      pid: {
+        fwdI: 0,
+        yawI: 0,
+        prevFwdE: 0,
+        prevYawE: 0,
+      },
+      path: [],
+      score: null,
+    };
+
+    function logLine(txt) {
+      const at = new Date().toLocaleTimeString();
+      E("log").innerHTML = `[${at}] ${txt}<br>` + E("log").innerHTML;
+    }
+
+    function readParams() {
+      const params = {
+        targetDistance: parseFloat(E("targetDistance").value),
+        targetTime: parseFloat(E("targetTime").value),
+        vmax: parseFloat(E("vmax").value),
+        accelDist: parseFloat(E("accelDist").value),
+        decelDist: parseFloat(E("decelDist").value),
+        vstop: parseFloat(E("vstop").value),
+        kp: parseFloat(E("kp").value),
+        ki: parseFloat(E("ki").value),
+        kd: parseFloat(E("kd").value),
+        kpyaw: parseFloat(E("kpyaw").value),
+        kiyaw: parseFloat(E("kiyaw").value),
+        kdyaw: parseFloat(E("kdyaw").value),
+        canBonus: E("canBonus").checked,
+      };
+      params.targetDistance = Math.max(0.5, params.targetDistance);
+      params.targetTime = Math.max(1, params.targetTime);
+      return params;
+    }
+
+    function solveCruiseSpeed(p) {
+      const accelDist = Math.min(p.accelDist, p.targetDistance * 0.45);
+      const decelDist = Math.min(p.decelDist, p.targetDistance - accelDist);
+      const cruiseDist = Math.max(0, p.targetDistance - accelDist - decelDist);
+      const tAccel = p.vmax > 0.01 ? (2 * accelDist) / p.vmax : 0;
+
+      const tFor = (vc) => {
+        const tCruise = vc > 0.001 ? cruiseDist / vc : 1e9;
+        const denom = Math.max(0.01, vc + p.vstop);
+        const tDecel = (2 * decelDist) / denom;
+        return tAccel + tCruise + tDecel;
+      };
+
+      let lo = Math.max(p.vstop + 0.01, 0.03);
+      let hi = Math.max(lo + 0.01, p.vmax);
+      for (let i = 0; i < 50; i++) {
+        const mid = (lo + hi) * 0.5;
+        if (tFor(mid) > p.targetTime) lo = mid;
+        else hi = mid;
+      }
+      const vc = clamp((lo + hi) * 0.5, p.vstop + 0.01, p.vmax);
+
+      return {
+        accelDist,
+        decelDist,
+        cruiseDist,
+        vCruise: vc,
+        tEstimate: tFor(vc),
+      };
+    }
+
+    function profileSpeed(progress, p, profile) {
+      const s = clamp(progress, 0, p.targetDistance);
+      if (s < profile.accelDist) {
+        const a = (p.vmax * p.vmax) / Math.max(0.0001, 2 * profile.accelDist);
+        return Math.sqrt(Math.max(0, 2 * a * s));
+      }
+
+      const coastEnd = profile.accelDist + profile.cruiseDist;
+      if (s < coastEnd) return profile.vCruise;
+
+      if (s < p.targetDistance) {
+        const d = s - coastEnd;
+        const a = (p.vstop * p.vstop - profile.vCruise * profile.vCruise) / Math.max(0.0001, 2 * profile.decelDist);
+        return Math.sqrt(Math.max(p.vstop * p.vstop, profile.vCruise * profile.vCruise + 2 * a * d));
+      }
+      return 0;
+    }
+
+    function resetRun() {
+      state.running = false;
+      state.t = 0;
+      state.x = 0;
+      state.y = 0;
+      state.yaw = 0;
+      state.v = 0;
+      state.omega = 0;
+      state.leftMotor = 0;
+      state.rightMotor = 0;
+      state.progress = 0;
+      state.desiredProgress = 0;
+      state.pid.fwdI = 0;
+      state.pid.yawI = 0;
+      state.pid.prevFwdE = 0;
+      state.pid.prevYawE = 0;
+      state.path = [{ x: 0, y: 0 }];
+      state.score = null;
+    }
+
+    function scoreRun(p) {
+      const finalDistanceError = Math.abs(p.targetDistance - state.x);
+      const finalYawErrorDeg = Math.abs((state.yaw * 180) / Math.PI);
+      const timeError = Math.abs(state.t - p.targetTime);
+
+      const distanceScore = Math.max(0, 40 - finalDistanceError * 50);
+      const timeScore = Math.max(0, 25 - timeError * 10);
+      const penalties = Math.max(0, Math.abs(state.y) * 15 + Math.max(0, finalYawErrorDeg - 6));
+      const canBonus = p.canBonus && finalDistanceError < 0.1 && Math.abs(state.y) < 0.06 && finalYawErrorDeg < 4 ? 15 : 0;
+      const base = 100;
+      const run = Math.max(0, base + distanceScore + timeScore + canBonus - penalties);
+
+      state.score = { base, distanceScore, timeScore, canBonus, penalties, run };
+      E("scoreCard").innerHTML =
+        `Base <span style="float:right">${fmt(base)}</span><br>` +
+        `Distance <span style="float:right">${fmt(distanceScore)}</span><br>` +
+        `Time <span style="float:right">${fmt(timeScore)}</span><br>` +
+        `Can Bonus <span style="float:right">${fmt(canBonus)}</span><br>` +
+        `Penalties <span style="float:right">${fmt(penalties)}</span><br><hr style="border-color:#253a59"/>` +
+        `<b>Run Score</b> <span style="float:right"><b>${fmt(run)}</b></span>`;
+    }
+
+    function updateTelemetry(fwdErr, yawErr) {
+      E("xVal").textContent = fmt(state.x, 3);
+      E("yVal").textContent = fmt(state.y, 3);
+      E("yawVal").textContent = fmt((state.yaw * 180) / Math.PI, 2);
+      E("speedVal").textContent = fmt(state.v, 3);
+      E("lMotorVal").textContent = fmt(state.leftMotor, 2);
+      E("rMotorVal").textContent = fmt(state.rightMotor, 2);
+      E("fwdErrVal").textContent = fmt(fwdErr, 3);
+      E("yawErrVal").textContent = fmt((yawErr * 180) / Math.PI, 2);
+      E("fwdIntVal").textContent = fmt(state.pid.fwdI, 3);
+      E("yawIntVal").textContent = fmt(state.pid.yawI, 3);
+
+      E("topbar").innerHTML =
+        `<span class="status-dot ${state.running ? "ready" : ""}"></span>${state.running ? "RUNNING" : "READY"}` +
+        ` | T: ${fmt(state.t, 2)}s` +
+        ` X: ${fmt(state.x, 3)}m` +
+        ` Y: ${fmt(state.y, 3)}m` +
+        ` ψ: ${fmt((state.yaw * 180) / Math.PI, 2)}°` +
+        ` V: ${fmt(state.v, 3)}m/s`;
+    }
+
+    const canvas = E("field");
+    const ctx = canvas.getContext("2d");
+
+    function drawField(p) {
+      const w = canvas.width;
+      const h = canvas.height;
+      const mToPx = 70;
+      const cx = 80;
+      const cy = h * 0.65;
+
+      ctx.fillStyle = "#020905";
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.strokeStyle = "#0e2818";
+      for (let x = 0; x < w; x += 45) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+      for (let y = 0; y < h; y += 45) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = "#1d5a22";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + p.targetDistance * mToPx, cy);
+      ctx.stroke();
+
+      ctx.strokeStyle = "#19477d";
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.moveTo(cx + state.x * mToPx, cy - 80);
+      ctx.lineTo(cx + state.x * mToPx, cy + 80);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = "#adff1f";
+      ctx.fillText("START", cx - 18, cy - 18);
+      ctx.fillStyle = "#ff3c42";
+      ctx.fillText("TARGET", cx + p.targetDistance * mToPx - 18, cy - 18);
+
+      ctx.strokeStyle = "#95ff1a";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i < state.path.length; i++) {
+        const pt = state.path[i];
+        const x = cx + pt.x * mToPx;
+        const y = cy - pt.y * mToPx;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      const rx = cx + state.x * mToPx;
+      const ry = cy - state.y * mToPx;
+      ctx.save();
+      ctx.translate(rx, ry);
+      ctx.rotate(-state.yaw);
+      ctx.fillStyle = "#10d9ff";
+      ctx.strokeStyle = "#0aa6c7";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(-10, -7, 20, 14, 3);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "#f6ff3a";
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(14, 0);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function step() {
+      const p = readParams();
+      const profile = solveCruiseSpeed(p);
+      state.profile = profile;
+      E("cruiseInfo").textContent = `Cruise: ${fmt(profile.vCruise, 3)} m/s — est. time ${fmt(profile.tEstimate, 2)}s (target ${fmt(p.targetTime, 2)}s)`;
+
+      if (state.running) {
+        const vSet = profileSpeed(state.desiredProgress, p, profile);
+        state.desiredProgress = clamp(state.desiredProgress + Math.max(vSet, 0.02) * state.dt, 0, p.targetDistance);
+        const fwdErr = state.desiredProgress - state.x;
+        const desiredYaw = Math.atan2(-state.y, Math.max(0.2, p.targetDistance - state.x));
+        const yawErr = wrapAngle(desiredYaw - state.yaw);
+
+        state.pid.fwdI = clamp(state.pid.fwdI + fwdErr * state.dt, -1.2, 1.2);
+        state.pid.yawI = clamp(state.pid.yawI + yawErr * state.dt, -2, 2);
+
+        const fwdD = (fwdErr - state.pid.prevFwdE) / state.dt;
+        const yawD = (yawErr - state.pid.prevYawE) / state.dt;
+        state.pid.prevFwdE = fwdErr;
+        state.pid.prevYawE = yawErr;
+
+        const pidFwd = p.kp * fwdErr + p.ki * state.pid.fwdI + p.kd * fwdD;
+        const pidYaw = p.kpyaw * yawErr + p.kiyaw * state.pid.yawI + p.kdyaw * yawD;
+
+        const baseCmd = clamp(vSet + pidFwd, -p.vmax, p.vmax);
+        const turnCmd = clamp(pidYaw, -p.vmax * 0.9, p.vmax * 0.9);
+        state.leftMotor = clamp(baseCmd - turnCmd, -p.vmax, p.vmax);
+        state.rightMotor = clamp(baseCmd + turnCmd, -p.vmax, p.vmax);
+
+        const vCmd = (state.leftMotor + state.rightMotor) * 0.5;
+        const omegaCmd = (state.rightMotor - state.leftMotor) / state.wheelBase;
+
+        state.v += (vCmd - state.v) * 5 * state.dt;
+        state.omega += (omegaCmd - state.omega) * 8 * state.dt;
+
+        state.yaw = wrapAngle(state.yaw + state.omega * state.dt);
+        state.x += state.v * Math.cos(state.yaw) * state.dt;
+        state.y += state.v * Math.sin(state.yaw) * state.dt;
+        state.progress = clamp(state.x, 0, p.targetDistance);
+        state.t += state.dt;
+
+        if (state.path.length === 0 || Math.hypot(state.x - state.path[state.path.length - 1].x, state.y - state.path[state.path.length - 1].y) > 0.02) {
+          state.path.push({ x: state.x, y: state.y });
+        }
+
+        const doneByDistance = state.x >= p.targetDistance;
+        const timeout = state.t >= p.targetTime + 5;
+        if (doneByDistance || timeout) {
+          state.running = false;
+          state.leftMotor = 0;
+          state.rightMotor = 0;
+          scoreRun(p);
+          logLine(`Run complete: x=${fmt(state.x, 3)}m y=${fmt(state.y, 3)}m yaw=${fmt((state.yaw * 180) / Math.PI, 2)}° t=${fmt(state.t, 2)}s`);
+        }
+
+        updateTelemetry(fwdErr, yawErr);
+      } else {
+        updateTelemetry(p.targetDistance - state.x, -state.yaw);
+      }
+
+      drawField(p);
+      requestAnimationFrame(step);
+    }
+
+    function refreshSliderLabels() {
+      E("vmaxV").textContent = fmt(E("vmax").value, 2);
+      E("accelDistV").textContent = fmt(E("accelDist").value, 2);
+      E("decelDistV").textContent = fmt(E("decelDist").value, 2);
+      E("vstopV").textContent = fmt(E("vstop").value, 2);
+      E("kpV").textContent = fmt(E("kp").value, 2);
+      E("kiV").textContent = fmt(E("ki").value, 2);
+      E("kdV").textContent = fmt(E("kd").value, 2);
+      E("kpyawV").textContent = fmt(E("kpyaw").value, 2);
+      E("kiyawV").textContent = fmt(E("kiyaw").value, 2);
+      E("kdyawV").textContent = fmt(E("kdyaw").value, 2);
+    }
+
+    sliders.forEach((id) => E(id).addEventListener("input", refreshSliderLabels));
+    E("runBtn").addEventListener("click", () => {
+      resetRun();
+      state.running = true;
+      logLine("Differential drive run started with trapezoid profile + PID using T265 x/y/yaw.");
+    });
+
+    resetRun();
+    refreshSliderLabels();
+    E("scoreCard").innerHTML = "Base <span style=\"float:right\">100.00</span><br>Run score appears after simulation.";
+    logLine("Configure profile and PID gains, then press Run Simulation.");
+    requestAnimationFrame(step);
+  </script>
+</body>
+</html>
