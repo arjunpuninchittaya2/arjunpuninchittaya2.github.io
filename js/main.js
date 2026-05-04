@@ -2,7 +2,19 @@
 
 // The snippet the user runs in the Flippity page console
 const SNIPPET =
-  `JSON.stringify(Array.from(document.querySelector('#list').querySelectorAll('tr')).slice(1).map(function(r){var c=r.querySelectorAll('td');return {word:(c[1]||{}).textContent.trim(),def:(c[2]||{}).textContent.trim()}}).filter(function(x){return x.word&&x.def}))`;
+`(function scrapeFlippityClean() {
+    const table = document.querySelector("#list");
+    if (!table) { console.error("Table #list not found."); return; }
+    const rows = Array.from(table.querySelectorAll("tr")).slice(1);
+    const vocabData = rows
+        .map(row => ({ word: row.cells[1]?.innerText.trim(), definition: row.cells[2]?.innerText.trim() }))
+        .filter(item => item.word && item.definition);
+    const jsonOutput = JSON.stringify(vocabData, null, 2);
+    console.log(\`✅ Scraped \${vocabData.length} clean items.\`);
+    console.log(jsonOutput);
+    copy(jsonOutput);
+    console.log("📋 Clean JSON copied to clipboard!");
+})();`;
 
 // ── DOM refs ──
 const startScreen  = document.getElementById('start-screen');
