@@ -215,14 +215,21 @@ prevBtn.addEventListener('click', goPrev);
 document.addEventListener('keydown', (e) => {
   // Don't fire shortcuts when typing in inputs (except specific ones)
   const tag = document.activeElement.tagName;
+  const inAnswerInput = document.activeElement === userAnswer;
   const inInput = tag === 'INPUT' || tag === 'TEXTAREA';
 
   if (studyScreen.classList.contains('hidden')) return;
 
+  // Let arrow keys move the cursor inside the answer input
+  if (inAnswerInput && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) return;
+
   if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); return; }
   if (e.key === 'ArrowLeft')  { e.preventDefault(); goPrev(); return; }
 
-  if (inInput) return; // block Space/Enter/R when typing in textarea
+  // Enter in the answer input reveals the answer
+  if (inAnswerInput && e.key === 'Enter') { e.preventDefault(); revealAnswer(); return; }
+
+  if (inInput) return; // block Space/Enter/R when typing in other inputs
 
   if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); revealAnswer(); return; }
   if (e.key === 'r' || e.key === 'R')     { e.preventDefault(); goToStart(); return; }
