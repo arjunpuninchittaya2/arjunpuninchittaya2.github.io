@@ -3,306 +3,371 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>EV-C Differential Drive Simulator</title>
+  <title>Vocab Study</title>
   <style>
     :root {
-      --bg: #090d16;
-      --panel: #10182a;
-      --grid: #153022;
-      --line: #1f2d45;
-      --txt: #d6e2ff;
-      --muted: #7a89a8;
-      --accent: #b9ff13;
-      --cyan: #10d9ff;
-      --warn: #ff6b2f;
+      --bg: #0f1117;
+      --surface: #1a1d2e;
+      --surface2: #22263a;
+      --border: #2e3350;
+      --txt: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #7c3aed;
+      --accent-light: #a78bfa;
+      --green: #10b981;
+      --green-bg: #052e1c;
+      --green-border: #065f46;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --yellow-bg: #1c1507;
+      --yellow-border: #78350f;
+      --radius: 10px;
     }
 
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      margin: 0;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--bg);
       color: var(--txt);
-      height: 100vh;
-      overflow: hidden;
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: 300px minmax(600px, 1fr) 300px;
-      height: 100vh;
-      overflow: hidden;
-    }
-
-    .panel {
-      padding: 14px;
-      border-right: 1px solid var(--line);
-      background: linear-gradient(180deg, #0d1424, #0a101d);
-      overflow: hidden;
-    }
-
-    .layout > .panel:not(.right) {
-      overflow-y: auto;
-      overflow-x: hidden;
-    }
-
-    .panel.right {
-      border-right: 0;
-      border-left: 1px solid var(--line);
-    }
-
-    h1 {
-      margin: 0 0 14px;
-      color: var(--accent);
-      font-size: 32px;
-      letter-spacing: 1px;
-    }
-
-    h2 {
-      color: var(--muted);
-      font-size: 13px;
-      letter-spacing: 2px;
-      margin: 14px 0 8px;
-      text-transform: uppercase;
-      border-top: 1px solid var(--line);
-      padding-top: 12px;
-    }
-
-    .row { display: grid; grid-template-columns: 1fr 110px; gap: 10px; align-items: center; margin-bottom: 8px; }
-    label { font-size: 13px; color: #9aaaca; }
-
-    input[type="number"] {
-      width: 100%;
-      background: #111b2e;
-      border: 1px solid #263958;
-      border-radius: 5px;
-      color: #e3f1ff;
-      padding: 7px;
-      font: inherit;
-    }
-
-    .slider-block { margin-bottom: 10px; }
-    .slider-block .meta {
+      min-height: 100vh;
       display: flex;
-      justify-content: space-between;
-      font-size: 12px;
-      color: #8fa1c6;
-      margin-bottom: 4px;
-    }
-    input[type="range"] { width: 100%; accent-color: var(--accent); }
-
-    button {
-      width: 100%;
-      border: 1px solid #2a4a2d;
-      background: #122117;
-      color: var(--accent);
-      padding: 8px;
-      border-radius: 6px;
-      font: inherit;
-      cursor: pointer;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 40px 16px;
     }
 
-    .main {
-      display: grid;
-      grid-template-rows: auto 1fr;
-      min-width: 0;
-    }
+    .screen { width: 100%; max-width: 620px; }
+    .screen.hidden { display: none !important; }
 
-    .topbar {
-      border-bottom: 1px solid var(--line);
-      padding: 8px 12px;
-      color: #9ab0d4;
-      font-size: 13px;
-      white-space: nowrap;
-      overflow: hidden;
-    }
+    /* ── Typography ── */
+    h1 { font-size: 1.9rem; font-weight: 700; color: var(--accent-light); margin-bottom: 6px; }
+    .subtitle { color: var(--muted); font-size: 0.93rem; margin-bottom: 28px; line-height: 1.5; }
 
-    canvas {
-      width: 100%;
-      height: calc(100vh - 50px);
-      display: block;
-      background: #030a06;
-    }
-
-    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    /* ── Card ── */
     .card {
-      background: #111a2c;
-      border: 1px solid #223553;
-      border-radius: 6px;
-      padding: 8px;
-    }
-    .card .k { color: #7e95bc; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
-    .card .v { font-size: 28px; color: var(--accent); }
-
-    .small { font-size: 12px; color: #8ea0c4; }
-    .mono { font-variant-numeric: tabular-nums; }
-
-    .log {
-      background: #091320;
-      border: 1px solid #20324f;
-      min-height: 120px;
-      max-height: 180px;
-      overflow: hidden;
-      border-radius: 6px;
-      padding: 8px;
-      font-size: 12px;
-      color: var(--cyan);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 16px;
     }
 
-    .status-dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      margin-right: 4px;
-      background: #7e8aa6;
+    /* ── Labels ── */
+    .field-label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 8px;
     }
-    .status-dot.ready { background: var(--accent); }
-    details.rules {
-      margin-top: 10px;
-      background: #0d1728;
-      border: 1px solid #223553;
+
+    /* ── Inputs ── */
+    input[type="text"], textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 8px;
+      color: var(--txt);
+      padding: 10px 12px;
+      font: inherit;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s;
     }
-    details.rules summary {
-      cursor: pointer;
-      color: #a8c5ff;
-      margin-bottom: 6px;
+    input[type="text"]:focus, textarea:focus { border-color: var(--accent); }
+    textarea { min-height: 90px; resize: vertical; font-family: ui-monospace, monospace; font-size: 0.82rem; }
+
+    /* ── Buttons ── */
+    .btn-primary {
+      display: block; width: 100%;
+      background: var(--accent); border: none; border-radius: 8px;
+      color: #fff; padding: 13px; font: inherit; font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: opacity 0.15s; margin-top: 16px;
     }
-    details.rules ul {
-      margin: 0 0 0 16px;
-      padding: 0;
-      color: #95a9d4;
-      font-size: 12px;
-      line-height: 1.4;
+    .btn-primary:hover { opacity: 0.88; }
+    .btn-primary:disabled { opacity: 0.38; cursor: not-allowed; }
+
+    .btn-secondary {
+      display: block; width: 100%;
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+      color: var(--txt); padding: 11px; font: inherit; font-size: 0.95rem; font-weight: 600;
+      cursor: pointer; transition: border-color 0.15s; margin-top: 10px;
+    }
+    .btn-secondary:hover { border-color: var(--accent-light); }
+
+    .btn-ghost {
+      background: none; border: 1px solid var(--border); border-radius: 6px;
+      color: var(--muted); padding: 6px 12px; font: inherit; font-size: 0.82rem;
+      cursor: pointer; transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-ghost:hover { border-color: var(--accent-light); color: var(--accent-light); }
+
+    .btn-copy {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+      color: var(--accent-light); padding: 6px 14px; font: inherit; font-size: 0.82rem;
+      font-weight: 600; cursor: pointer; transition: background 0.15s; white-space: nowrap;
+    }
+    .btn-copy:hover { background: #2d1f5e; }
+    .btn-copy.copied { color: var(--green); border-color: var(--green-border); }
+
+    /* ── Step badges ── */
+    .step-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+    }
+    .step-badge {
+      width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+      background: var(--accent); color: #fff;
+      font-size: 0.75rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .step-title { font-weight: 600; font-size: 0.95rem; }
+
+    /* ── Snippet box ── */
+    .snippet-wrap {
+      position: relative;
+      background: #0a0c14;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 14px 14px 14px;
+      margin-bottom: 12px;
+    }
+    .snippet-code {
+      font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      font-size: 0.78rem;
+      color: #c9d1e0;
+      word-break: break-all;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      padding-right: 70px;
+    }
+    .snippet-copy-btn {
+      position: absolute; top: 10px; right: 10px;
+    }
+
+    /* ── Info / callout boxes ── */
+    .callout {
+      border-radius: 8px; padding: 12px 14px;
+      font-size: 0.87rem; line-height: 1.55;
+      margin-bottom: 12px;
+    }
+    .callout.yellow {
+      background: var(--yellow-bg);
+      border: 1px solid var(--yellow-border);
+      color: #fde68a;
+    }
+    .callout.green {
+      background: var(--green-bg);
+      border: 1px solid var(--green-border);
+      color: #a7f3d0;
+    }
+    .callout a { color: inherit; font-weight: 600; }
+    .callout ol, .callout ul { padding-left: 18px; margin-top: 6px; }
+    .callout li { margin-bottom: 3px; }
+
+    /* ── Order toggle ── */
+    .order-group { display: flex; gap: 10px; margin-top: 16px; }
+    .order-btn {
+      flex: 1; background: var(--surface2); border: 2px solid var(--border);
+      border-radius: 8px; color: var(--muted); padding: 11px; font: inherit;
+      font-size: 0.88rem; font-weight: 600; cursor: pointer; text-align: center;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .order-btn.selected { border-color: var(--accent); color: var(--accent-light); }
+
+    /* ── Error ── */
+    .error-msg {
+      margin-top: 10px; padding: 10px 14px;
+      background: #2d1515; border: 1px solid #7f1d1d;
+      border-radius: 6px; color: var(--red); font-size: 0.87rem;
+    }
+    .error-msg.hidden { display: none; }
+
+    /* ══════════════ STUDY SCREEN ══════════════ */
+    #study-screen { max-width: 680px; }
+
+    .study-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 18px;
+    }
+    .study-title { font-size: 1rem; color: var(--accent-light); font-weight: 600; }
+    .progress-text { font-size: 0.88rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    .progress-bar-wrap {
+      height: 4px; background: var(--surface2); border-radius: 2px;
+      margin-bottom: 24px; overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s;
+    }
+
+    .word-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 36px 28px;
+      text-align: center; margin-bottom: 20px;
+    }
+    .word-label-small {
+      font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--muted); margin-bottom: 14px;
+    }
+    .word-text { font-size: 2.2rem; font-weight: 700; color: var(--txt); line-height: 1.25; }
+
+    .answer-section { margin-bottom: 16px; }
+
+    .btn-reveal {
+      display: block; width: 100%;
+      background: var(--surface2); border: 2px solid var(--accent); border-radius: 8px;
+      color: var(--accent-light); padding: 12px; font: inherit; font-size: 1rem;
+      font-weight: 700; cursor: pointer; margin-top: 10px; transition: background 0.15s;
+    }
+    .btn-reveal:hover { background: #2d1f5e; }
+
+    .true-answer {
+      background: var(--green-bg); border: 1px solid var(--green-border);
+      border-radius: 8px; padding: 16px 18px; margin-top: 12px;
+    }
+    .true-answer .ans-label {
+      font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--green); margin-bottom: 8px;
+    }
+    .true-answer .ans-text { color: #a7f3d0; font-size: 1rem; line-height: 1.55; }
+    .true-answer.hidden { display: none; }
+
+    .nav-row { display: flex; gap: 12px; margin-top: 20px; }
+    .btn-nav {
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--txt); padding: 11px; font: inherit;
+      font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: border-color 0.15s;
+    }
+    .btn-nav:hover:not(:disabled) { border-color: var(--accent-light); }
+    .btn-nav:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .shortcuts-hint {
+      margin-top: 16px; text-align: center;
+      font-size: 0.76rem; color: var(--muted); line-height: 1.9;
+    }
+    .shortcuts-hint kbd {
+      display: inline-block; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; padding: 1px 6px; font: inherit; font-size: 0.72rem;
     }
   </style>
 </head>
 <body>
-  <div class="layout">
-    <aside class="panel">
-      <h1>EV-C SIM</h1>
 
-      <h2>Competition Setup</h2>
-      <div class="row">
-        <label for="targetDistance">Target Distance (m)</label>
-        <input id="targetDistance" type="number" min="0.5" step="0.1" value="8" />
-      </div>
-      <div class="row">
-        <label for="targetTime">Target Time (s)</label>
-        <input id="targetTime" type="number" min="1" step="0.1" value="14" />
-      </div>
+  <!-- ══ START SCREEN ══ -->
+  <div id="start-screen" class="screen">
+    <h1>Vocab Study</h1>
+    <p class="subtitle">
+      Study flashcards from any Flippity list — no login needed.<br>
+      Because of browser security restrictions, you'll run a small snippet in your browser console to extract the words.
+    </p>
 
-      <h2>Pure Pursuit Path</h2>
-      <div class="small">Path is always can-shaped: start to can gap and back to target. Pure pursuit tracks a trapezoid-like route.</div>
-      <div class="slider-block">
-        <div class="meta"><span>Vmax (m/s)</span><span id="vmaxV" class="mono"></span></div>
-        <input id="vmax" type="range" min="0.3" max="2.5" step="0.01" value="1.2" />
+    <!-- Step 1: URL -->
+    <div class="card">
+      <div class="step-header">
+        <div class="step-badge">1</div>
+        <span class="step-title">Enter your Flippity URL</span>
       </div>
-      <div class="slider-block">
-        <div class="meta"><span>Lookahead (m)</span><span id="lookaheadV" class="mono"></span></div>
-        <input id="lookahead" type="range" min="0.2" max="2.5" step="0.01" value="0.9" />
-      </div>
-      <div class="slider-block">
-        <div class="meta"><span>Middle Y (m)</span><span id="midYV" class="mono"></span></div>
-        <input id="midY" type="range" min="0.2" max="2.0" step="0.01" value="1.0" />
-      </div>
-      <div class="slider-block">
-        <div class="meta"><span>Vstop (m/s)</span><span id="vstopV" class="mono"></span></div>
-        <input id="vstop" type="range" min="0" max="0.5" step="0.01" value="0.06" />
-      </div>
-      <div class="card small mono" id="pathInfo">Path: (0,0) -> (1,1) -> (7,1) -> (8,0)</div>
+      <label class="field-label" for="url-input">Flippity URL</label>
+      <input
+        id="url-input"
+        type="text"
+        placeholder="https://www.flippity.net/v2/fc.php?k=…"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button id="generate-btn" class="btn-primary">Generate Console Snippet →</button>
+    </div>
 
-      <h2>PID - Forward (x)</h2>
-      <div class="slider-block">
-        <div class="meta"><span>Kp</span><span id="kpV" class="mono"></span></div>
-        <input id="kp" type="range" min="0" max="10" step="0.05" value="3" />
-      </div>
-      <div class="slider-block">
-        <div class="meta"><span>Ki</span><span id="kiV" class="mono"></span></div>
-        <input id="ki" type="range" min="0" max="1" step="0.01" value="0.05" />
-      </div>
-      <div class="slider-block">
-        <div class="meta"><span>Kd</span><span id="kdV" class="mono"></span></div>
-        <input id="kd" type="range" min="0" max="2" step="0.01" value="0.2" />
+    <!-- Step 2: Snippet (hidden until URL entered) -->
+    <div class="card hidden" id="step2-card">
+      <div class="step-header">
+        <div class="step-badge">2</div>
+        <span class="step-title">Run this snippet in the Flippity page</span>
       </div>
 
-      <h2>PID - Heading (yaw)</h2>
-      <div class="slider-block">
-        <div class="meta"><span>Kp_yaw</span><span id="kpyawV" class="mono"></span></div>
-        <input id="kpyaw" type="range" min="0" max="8" step="0.05" value="4" />
-      </div>
-      <div class="slider-block">
-        <div class="meta"><span>Ki_yaw</span><span id="kiyawV" class="mono"></span></div>
-        <input id="kiyaw" type="range" min="0" max="1" step="0.01" value="0.01" />
-      </div>
-      <div class="slider-block">
-        <div class="meta"><span>Kd_yaw</span><span id="kdyawV" class="mono"></span></div>
-        <input id="kdyaw" type="range" min="0" max="2" step="0.01" value="0.15" />
+      <div class="callout yellow">
+        <ol>
+          <li>Click <strong><a id="flippity-link" href="#" target="_blank" rel="noopener">Open Flippity page ↗</a></strong> and wait for it to fully load.</li>
+          <li>Open <strong>DevTools</strong> — press <kbd>F12</kbd> (Windows/Linux) or <kbd>⌥⌘I</kbd> (Mac).</li>
+          <li>Click the <strong>Console</strong> tab.</li>
+          <li>Paste the code below and press <strong>Enter</strong>.</li>
+          <li>The console will print a JSON string — <strong>copy all of it</strong>.</li>
+        </ol>
       </div>
 
-      <h2>Run</h2>
-      <div class="row">
-        <label for="insideCanDistance">Inside Can Distance (cm)</label>
-        <input id="insideCanDistance" type="number" min="0" max="100" step="0.1" value="50" />
+      <div class="snippet-wrap">
+        <pre class="snippet-code" id="snippet-code"></pre>
+        <button class="btn-copy snippet-copy-btn" id="copy-snippet-btn">Copy</button>
       </div>
-      <div class="row" style="grid-template-columns: 1fr auto;">
-        <label for="competitionViolation">Competition Violation (+150)</label>
-        <input id="competitionViolation" type="checkbox" />
-      </div>
-      <div class="row" style="grid-template-columns: 1fr auto;">
-        <label for="constructionViolation">Construction Violation (+300)</label>
-        <input id="constructionViolation" type="checkbox" />
-      </div>
-      <button id="runBtn">Run Simulation</button>
-      <details class="rules">
-        <summary>2026 EV-C Quick Rules Reference</summary>
-        <ul>
-          <li>Run Score = 100 + Distance Score + Time Score + Bonuses + Run Penalties (low score wins).</li>
-          <li>Distance Score = 2.0 pt/cm &times; Vehicle Distance (distance from Measurement Point to Target Point).</li>
-          <li>Time Score = absolute value of (Target Time − Run Time).</li>
-          <li>Can Bonus = -0.5 &times; (110 − Inside Can Distance) when teams attempt and complete the can path.</li>
-          <li>Run Penalties: Competition Violation = +150, Construction Violation = +300.</li>
-          <li>Bonus Line is halfway between Start and Target. Two upright cans are placed on the Bonus Line.</li>
-          <li>Outside can is fixed by the Event Supervisor; inside can is competitor set between 0.0 and 100.0 cm from the outside can’s inside edge.</li>
-          <li>Can Bonus requires the full vehicle to travel between cans during the run.</li>
-        </ul>
-      </details>
-    </aside>
+    </div>
 
-    <main class="main">
-      <div class="topbar mono" id="topbar"></div>
-      <canvas id="field" width="900" height="800"></canvas>
-    </main>
-
-    <aside class="panel right">
-      <h2 style="margin-top:0;padding-top:0;border-top:0;">T265 Telemetry</h2>
-      <div class="grid2 mono">
-        <div class="card"><div class="k">x (m)</div><div class="v" id="xVal">0.000</div></div>
-        <div class="card"><div class="k">y (m)</div><div class="v" id="yVal" style="color:var(--cyan)">0.000</div></div>
-        <div class="card"><div class="k">yaw (°)</div><div class="v" id="yawVal" style="color:var(--cyan)">0.00</div></div>
-        <div class="card"><div class="k">speed (m/s)</div><div class="v" id="speedVal">0.000</div></div>
-        <div class="card"><div class="k">L motor</div><div class="v" id="lMotorVal" style="color:var(--warn)">0.00</div></div>
-        <div class="card"><div class="k">R motor</div><div class="v" id="rMotorVal" style="color:var(--warn)">0.00</div></div>
+    <!-- Step 3: Paste result -->
+    <div class="card hidden" id="step3-card">
+      <div class="step-header">
+        <div class="step-badge">3</div>
+        <span class="step-title">Paste the console output here</span>
       </div>
 
-      <h2>PID State</h2>
-      <div class="grid2 mono">
-        <div class="card"><div class="k">fwd error</div><div class="v" id="fwdErrVal">-</div></div>
-        <div class="card"><div class="k">yaw error</div><div class="v" id="yawErrVal">-</div></div>
-        <div class="card"><div class="k">fwd integral</div><div class="v" id="fwdIntVal">-</div></div>
-        <div class="card"><div class="k">yaw integral</div><div class="v" id="yawIntVal">-</div></div>
+      <label class="field-label" for="json-paste">Paste JSON output</label>
+      <textarea id="json-paste" placeholder='[{"word":"…","def":"…"}, …]'></textarea>
+
+      <label class="field-label" style="margin-top:18px;">Card Order</label>
+      <div class="order-group">
+        <button class="order-btn selected" data-order="original">📋 Original Order</button>
+        <button class="order-btn" data-order="random">🔀 Random Order</button>
       </div>
 
-      <h2>Scoring</h2>
-      <div class="card mono small" id="scoreCard"></div>
-
-      <h2>Event Log</h2>
-      <div class="log mono" id="log"></div>
-    </aside>
+      <button id="start-btn" class="btn-primary">Start Studying →</button>
+      <div id="error-msg" class="error-msg hidden"></div>
+    </div>
   </div>
 
-  <script type="module" src="js/main.js"></script>
+  <!-- ══ STUDY SCREEN ══ -->
+  <div id="study-screen" class="screen hidden">
+    <div class="study-header">
+      <span class="study-title">Vocab Study</span>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span class="progress-text" id="progress-text">1 / 1</span>
+        <button class="btn-ghost" id="back-btn">← Menu</button>
+      </div>
+    </div>
+
+    <div class="progress-bar-wrap">
+      <div class="progress-bar" id="progress-bar" style="width:0%"></div>
+    </div>
+
+    <div class="word-card">
+      <div class="word-label-small">Word</div>
+      <div class="word-text" id="word-display">—</div>
+    </div>
+
+    <div class="answer-section">
+      <label class="field-label" for="user-answer">Your Definition</label>
+      <textarea id="user-answer" placeholder="Type your definition here…" style="min-height:80px;font-family:inherit;font-size:0.95rem;"></textarea>
+      <button class="btn-reveal" id="reveal-btn">Show Answer</button>
+    </div>
+
+    <div class="true-answer hidden" id="true-answer">
+      <div class="ans-label">✓ Definition</div>
+      <div class="ans-text" id="answer-text"></div>
+    </div>
+
+    <div class="nav-row">
+      <button class="btn-nav" id="prev-btn">← Previous</button>
+      <button class="btn-nav" id="next-btn">Next →</button>
+    </div>
+
+    <div class="shortcuts-hint">
+      <kbd>Space</kbd> / <kbd>Enter</kbd> show answer &nbsp;·&nbsp;
+      <kbd>←</kbd> previous &nbsp;·&nbsp;
+      <kbd>→</kbd> next &nbsp;·&nbsp;
+      <kbd>R</kbd> back to menu
+    </div>
+  </div>
+
+  <script src="js/main.js"></script>
 </body>
 </html>
